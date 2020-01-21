@@ -8,4 +8,4 @@ Before working in data science, I was a postdoctoral researcher at Stanford Univ
 
 In the dark ages known as my PhD, I also tried to understand how the brain works. Instead of looking at neurons firing and trying to guess what information they might be encoding, I analyzed the chemical soup that all neurons bathe in using mass spectrometry. 
 
-Overall, I [found some stuff about the brain](https://scholar.google.com/citations?user=H9Vd50IAAAAJ&hl=en). Worked with some amazing people, ate good food, whined on a bunch of hiking trail, changed my last name etc.
+Overall, I [found some stuff about the brain](https://scholar.google.com/citations?user=H9Vd50IAAAAJ&hl=en). Worked with some amazing people, ate good food, whined on a bunch of hiking trails, changed my last name etc.
