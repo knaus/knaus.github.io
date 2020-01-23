@@ -1,0 +1,291 @@
+---
+title: "Chapter4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Many different random walks converge towards a gaussian distribution  
+```{r}
+growth <- replicate( 10000 , prod( 1 + runif(12,0,0.1) ) )
+dens( growth , norm.comp=TRUE )
+big <- replicate( 10000 , prod( 1 + runif(12,0,0.5) ) )
+small <- replicate( 10000 , prod( 1 + runif(12,0,0.01) ) )
+dens( big , norm.comp=TRUE )
+dens( small , norm.comp=TRUE )
+log.big <- replicate( 10000 , log(prod(1 + runif(12,0,0.5))) )
+dens( log.big , norm.comp=TRUE )
+```
+
+A language for describing models: A set of variables we wish to understand. The observable variables are the data. Unobservable variables like rates or means are parameters. Each variable is defined either by a probability distribution or in terms of other variables. Variables with their probability distributions define a joint generative model. 
+
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+str(d)
+d2 <- d[ d$age >= 18 , ]
+dens(d2$height)
+```
+```{r}
+mu.list <- seq( from=150, to=160 , length.out=100 )
+sigma.list <- seq( from=7 , to=9 , length.out=100 )
+post <- expand.grid( mu=mu.list , sigma=sigma.list )
+post$LL <- sapply( 1:nrow(post) , function(i) sum(dnorm( d2$height , post$mu[i] , post$sigma[i] , log=TRUE ) ) )
+post$prod <- post$LL + dnorm( post$mu , 178 , 20 , TRUE ) + dunif( post$sigma , 0 , 50 , TRUE )
+post$prob <- exp( post$prod - max(post$prod) )
+```
+
+```{r}
+sample.rows <- sample( 1:nrow(post) , size=1e4 , replace=TRUE , prob=post$prob )
+sample.mu <- post$mu[ sample.rows ]
+sample.sigma <- post$sigma[ sample.rows ]
+dens( sample.mu )
+dens( sample.sigma )
+```
+ 
+ let's use the quadratic approximation to find mu and sigma that dscribe the height data. So we are looking for a 2- dimensional Gaussian posterior distribution of mu and sigma.
+ 
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d2 <- d[ d$age >= 18 , ]
+
+flist <- alist(
+                height ~ dnorm( mu , sigma ) ,
+                mu ~ dnorm( 178 , 20 ) ,
+                sigma ~ dunif( 0 , 50 ))
+
+m4.1 <- quap( flist , data=d2 )
+```
+ let's repeat the process, but now include a linear model of the weight / height relationship
+```{r}
+# load data again, since it's a long way back
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d2 <- d[ d$age >= 18 , ]
+# define the average weight, x-bar
+xbar <- mean(d2$weight)
+# fit model
+m4.3 <- quap(
+            alist(
+                  height ~ dnorm( mu , sigma ) ,
+                  mu <- a + b*( weight - xbar ) ,
+                  a ~ dnorm( 178 , 20 ) ,
+                  b ~ dlnorm( 0 , 1 ) ,
+                  sigma ~ dunif( 0 , 50 )) ,
+            data=d2 )
+```
+
+Questions from the book
+4E1. Likelihood is y ~ dnorm(mu, sigma)
+4E2. There are two parameters in the posterior distribution, mu and sigma
+4E3. Prob(mu,sigma| height data) = Prob(data | mu, sigma) * Prob (mu)* Prob (sigma)/ Normalizing const
+4E4. linear model: mu = alpha +beta * x
+4E5. Three parameters in the posterior distribution: alpha, beta, sigma
+
+4M1. Simulate observed y values from the prior & plot
+```{r}
+curve( dnorm( x , 0 , 10 ), from =-10, to=+10)
+curve( dexp( x , 1 ), from =-10, to=+10)
+
+sample_mu <-rnorm(n=1000,mean=0,sd=10)
+sample_sigma <- rexp(1000,rate=1 )
+
+prior_height<- rnorm (n=1000, sample_mu,sample_sigma)
+dens(prior_height)
+```
+4M4. height ~ Normal (mu, sigma)
+mu = alpha + beta * year
+alpha ~ Normal (150, 25)
+beta ~ LogNormal(2, 0.5)
+sigma ~ Uniform(0,50)
+
+4H1. Provide predicted heights and 89% confidence interval based on these weights. 
+```{r}
+
+missing.weights <- array(data = c(46.95, 43.72, 64.78, 32.59, 54.63))
+
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d2 <- d[ d$age >= 18 , ]
+# define the average weight, x-bar
+xbar <- mean(d2$weight)
+# fit model
+m4.1 <- quap(
+            alist(
+                  height ~ dnorm( mu , sigma ) ,
+                  mu <- a + b*( weight - xbar ) ,
+                  a ~ dnorm( 178 , 20 ) ,
+                  b ~ dlnorm( 0 , 1 ) ,
+                  sigma ~ dunif( 0 , 50 )) ,
+            data=d2 )
+post <- extract.samples(m4.1)
+weight.seq <- c(46.95, 43.72, 64.78, 32.59, 54.63)
+sim.height <- sapply( weight.seq , function(weight)
+ rnorm(
+ n=nrow(post) ,
+ mean=post$a + post$b*( weight - xbar ) ,
+ sd=post$sigma ) )
+sim.heightmean <- apply(sim.height, 2, mean)
+sim.heightPI <- apply(sim.height , 2 , PI , prob=0.89 )
+sim.heightmean
+sim.heightPI
+```
+ Select all rows with ages below 18. Fit a linear regression using quap. Present and interpret the estimates. For every 10 units increase in weight, how much taller does the model predict a child gets? 20.72 cm per 10 units in weight 
+ 
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+d3 <- d[ d$age < 18 , ]
+# define the average weight, x-bar
+xbar <- mean(d3$weight)
+# fit model
+m4.2 <- quap(
+            alist(
+                  height ~ dnorm( mu , sigma ) ,
+                  mu <- a + b*( weight - xbar ) ,
+                  a ~ dnorm( 178 , 20 ) ,
+                  b ~ dlnorm( 0 , 1 ) ,
+                  sigma ~ dunif( 0 , 50 )) ,
+            data=d3 )
+post <- extract.samples(m4.2)
+precis (m4.2)
+
+```
+ 
+ Plot the raw data, the MAP regression line, 89% interval for the mean. Superimpose the 89% interval for predicted heights.  
+
+```{r}
+# plot raw data
+# fading out points to make line and interval more visible
+plot( height ~ weight , data=d3 , col=col.alpha(rangi2,0.5) )
+
+#plot the MAP line, the mean mu for each weight
+weight.seq<- seq(from=0, to=50, by=1)
+  # use link to compute mu for each sample from posterior and for each weight in weight.seq
+mu <- link( m4.2 , data=data.frame(weight=weight.seq) )
+# loop over samples and plot each mu value
+for ( i in 1:1000 )
+  points( weight.seq , mu[i,] , pch=16 , col=col.alpha(rangi2,0.1) )
+mu.PI<- apply(mu, 2, PI, prob=0.89)
+shade( mu.PI, weight.seq)
+
+# plot the 89% interval for predicted heights
+post <- extract.samples(m4.2)
+sim.height <- sapply( weight.seq , function(weight)
+ rnorm(
+ n=nrow(post) ,
+ mean=post$a + post$b*( weight - xbar ) ,
+ sd=post$sigma ) )
+sim.heightPI <- apply(sim.height , 2 , PI , prob=0.89 )
+shade( sim.heightPI , weight.seq)
+```
+ 4H3. Model the relationship between height and log weight
+ 
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+# define the average weight, x-bar
+xbar <- mean(d$weight)
+# fit model
+m4.4 <- quap(
+            alist(
+                  height ~ dnorm( mu , sigma ) ,
+                  mu <- a + b*log(weight) ,
+                  a ~ dnorm( 178 , 20 ) ,
+                  b ~ dlnorm( 0 , 1 ) ,
+                  sigma ~ dunif( 0 , 50 )) ,
+            data=d3 )
+precis (m4.4)
+```
+
+Plotting the results
+```{r}
+plot( height ~ weight , data=Howell1 ,col=col.alpha(rangi2,0.4) )
+
+#plot the MAP line, the mean mu for each weight
+weight.seq<- seq(from=0, to=80, by=1)
+  # use link to compute mu for each sample from posterior and for each weight in weight.seq
+mu <- link( m4.4 , data=data.frame(weight=weight.seq) )
+# loop over samples and plot each mu value
+for ( i in 1:1000 )
+  points( weight.seq , mu[i,] , pch=16 , col=col.alpha(rangi2,0.1) )
+mu.PI<- apply(mu, 2, PI, prob=0.89)
+shade( mu.PI, weight.seq)
+
+# plot the 89% interval for predicted heights
+post <- extract.samples(m4.4)
+sim.height <- sapply( weight.seq , function(weight)
+ rnorm(
+ n=nrow(post) ,
+ mean=post$a + post$b*log( weight) ,
+ sd=post$sigma ) )
+sim.heightPI <- apply(sim.height , 2 , PI , prob=0.89 )
+shade( sim.heightPI , weight.seq)
+```
+
+```{r}
+library(rethinking)
+data(Howell1)
+d <- Howell1
+# define the average weight, x-bar
+xbar <- mean(d$weight)
+# fit model
+m4.6 <- quap(
+            alist(
+                  height ~ dnorm( mu , sigma ) ,
+                  mu <- a + b*log(weight) ,
+                  a ~ dnorm( 178 , 100) ,
+                  b ~ dlnorm( 0 , 1) ,
+                  sigma ~ dunif( 0 , 50 )) ,
+            data=d )
+plot( height ~ weight , data=Howell1 ,col=col.alpha(rangi2,0.4) )
+
+#plot the MAP line, the mean mu for each weight
+weight.seq<- seq(from=0, to=80, by=1)
+  # use link to compute mu for each sample from posterior and for each weight in weight.seq
+mu <- link( m4.6 , data=data.frame(weight=weight.seq) )
+# loop over samples and plot each mu value
+for ( i in 1:1000 )
+  points( weight.seq , mu[i,] , pch=16 , col=col.alpha(rangi2,0.1) )
+mu.PI<- apply(mu, 2, PI, prob=0.89)
+shade( mu.PI, weight.seq)
+
+# plot the 89% interval for predicted heights
+post <- extract.samples(m4.6)
+sim.height <- sapply( weight.seq , function(weight)
+ rnorm(
+ n=nrow(post) ,
+ mean=post$a + post$b*log( weight) ,
+ sd=post$sigma ) )
+sim.heightPI <- apply(sim.height , 2 , PI , prob=0.89 )
+shade( sim.heightPI , weight.seq)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
